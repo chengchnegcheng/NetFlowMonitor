@@ -1,0 +1,2532 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>NetFlow 网络流量监控</title>
+    
+    <!-- Bootstrap CSS -->
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/css/bootstrap.min.css" rel="stylesheet">
+    <!-- Font Awesome -->
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
+    <!-- Chart.js -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <!-- Socket.IO -->
+    <script src="https://cdn.socket.io/4.5.0/socket.io.min.js"></script>
+    <!-- Leaflet Map -->
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.7.1/dist/leaflet.css" />
+    <script src="https://unpkg.com/leaflet@1.7.1/dist/leaflet.js"></script>
+    
+    <style>
+        /* 全局样式优化 */
+        body {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+        }
+        
+        /* 导航栏优化 */
+        .navbar {
+            background: rgba(26, 32, 44, 0.95) !important;
+            backdrop-filter: blur(10px);
+            border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+            box-shadow: 0 4px 20px rgba(0, 0, 0, 0.1);
+        }
+        
+        .navbar-brand {
+            font-weight: 700;
+            font-size: 1.4rem;
+            background: linear-gradient(45deg, #667eea, #764ba2);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+        }
+        
+        /* 卡片样式优化 */
+        .card {
+            background: rgba(255, 255, 255, 0.95);
+            backdrop-filter: blur(10px);
+            border: 1px solid rgba(255, 255, 255, 0.2);
+            border-radius: 16px;
+            box-shadow: 0 8px 32px rgba(0, 0, 0, 0.1);
+            transition: all 0.3s ease;
+        }
+        
+        .card:hover {
+            transform: translateY(-5px);
+            box-shadow: 0 16px 48px rgba(0, 0, 0, 0.15);
+        }
+        
+        .card-header {
+            background: linear-gradient(135deg, rgba(102, 126, 234, 0.1), rgba(118, 75, 162, 0.1));
+            border-bottom: 1px solid rgba(102, 126, 234, 0.2);
+            border-radius: 16px 16px 0 0 !important;
+            padding: 1.25rem 1.5rem;
+        }
+        
+        .card-title {
+            color: #2d3748;
+            font-weight: 600;
+            margin: 0;
+        }
+        
+        /* 指标卡片优化 */
+        .metric-card {
+            text-align: center;
+            padding: 2rem 1.5rem;
+            position: relative;
+            overflow: hidden;
+            border-radius: 20px;
+            background: linear-gradient(135deg, #fff, #f8fafc);
+        }
+        
+        .metric-card::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            height: 4px;
+            background: linear-gradient(90deg, #667eea, #764ba2);
+            border-radius: 20px 20px 0 0;
+        }
+        
+        .metric-value {
+            font-size: 2.5rem;
+            font-weight: 800;
+            background: linear-gradient(135deg, #667eea, #764ba2);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+            margin-bottom: 0.5rem;
+            transition: all 0.3s ease;
+        }
+        
+        .metric-card:hover .metric-value {
+            transform: scale(1.05);
+        }
+        
+        .metric-label {
+            color: #718096;
+            font-size: 0.95rem;
+            font-weight: 500;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+        
+        /* 状态指示器优化 */
+        .status-indicator {
+            width: 14px;
+            height: 14px;
+            border-radius: 50%;
+            display: inline-block;
+            margin-right: 10px;
+            position: relative;
+        }
+        
+        .status-active {
+            background: linear-gradient(135deg, #48bb78, #38a169);
+            box-shadow: 0 0 20px rgba(72, 187, 120, 0.5);
+            animation: pulse-glow 2s infinite;
+        }
+        
+        .status-inactive {
+            background: linear-gradient(135deg, #f56565, #e53e3e);
+            box-shadow: 0 0 10px rgba(245, 101, 101, 0.3);
+        }
+        
+        @keyframes pulse-glow {
+            0%, 100% { 
+                opacity: 1; 
+                box-shadow: 0 0 20px rgba(72, 187, 120, 0.5);
+            }
+            50% { 
+                opacity: 0.7; 
+                box-shadow: 0 0 30px rgba(72, 187, 120, 0.8);
+            }
+        }
+        
+        /* 按钮优化 */
+        .btn-control {
+            margin: 0 5px;
+            border-radius: 10px;
+            padding: 8px 16px;
+            font-weight: 600;
+            transition: all 0.3s ease;
+            border: none;
+            position: relative;
+            overflow: hidden;
+        }
+        
+        .btn-control::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: -100%;
+            width: 100%;
+            height: 100%;
+            background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.2), transparent);
+            transition: left 0.5s;
+        }
+        
+        .btn-control:hover::before {
+            left: 100%;
+        }
+        
+        .btn-success {
+            background: linear-gradient(135deg, #48bb78, #38a169);
+            border: none;
+        }
+        
+        .btn-danger {
+            background: linear-gradient(135deg, #f56565, #e53e3e);
+            border: none;
+        }
+        
+        .btn-info {
+            background: linear-gradient(135deg, #4299e1, #3182ce);
+            border: none;
+        }
+        
+        /* 表格优化 */
+        .table-container {
+            max-height: 500px;
+            overflow-y: auto;
+            border-radius: 12px;
+            background: rgba(255, 255, 255, 0.95);
+        }
+        
+        .table-container::-webkit-scrollbar {
+            width: 8px;
+        }
+        
+        .table-container::-webkit-scrollbar-track {
+            background: rgba(255, 255, 255, 0.1);
+            border-radius: 4px;
+        }
+        
+        .table-container::-webkit-scrollbar-thumb {
+            background: linear-gradient(135deg, #667eea, #764ba2);
+            border-radius: 4px;
+        }
+        
+        .table {
+            margin: 0;
+        }
+        
+        .table-dark {
+            background: linear-gradient(135deg, #2d3748, #4a5568) !important;
+        }
+        
+        .table-dark th {
+            border-color: rgba(255, 255, 255, 0.2);
+            font-weight: 600;
+            text-transform: uppercase;
+            font-size: 0.85rem;
+            letter-spacing: 0.5px;
+        }
+        
+        .session-row {
+            cursor: pointer;
+            transition: all 0.2s ease;
+        }
+        
+        .session-row:hover {
+            background: linear-gradient(135deg, rgba(102, 126, 234, 0.1), rgba(118, 75, 162, 0.1)) !important;
+            transform: scale(1.01);
+        }
+        
+        /* 排序优化 */
+        .sortable-header {
+            cursor: pointer;
+            user-select: none;
+            position: relative;
+            transition: all 0.3s ease;
+        }
+        
+        .sortable-header:hover {
+            background: rgba(255, 255, 255, 0.2) !important;
+            transform: translateY(-1px);
+        }
+        
+        .sort-icon {
+            margin-left: 8px;
+            opacity: 0.6;
+            transition: all 0.3s ease;
+            font-size: 0.8rem;
+        }
+        
+        .sort-icon.active {
+            opacity: 1;
+            color: #667eea;
+            text-shadow: 0 0 10px rgba(102, 126, 234, 0.5);
+        }
+        
+        .sort-icon.asc::after {
+            content: "▲";
+        }
+        
+        .sort-icon.desc::after {
+            content: "▼";
+        }
+        
+        /* 链接优化 */
+        .ip-link {
+            color: #667eea;
+            text-decoration: none;
+            font-weight: 600;
+            transition: all 0.3s ease;
+        }
+        
+        .ip-link:hover {
+            color: #764ba2;
+            text-decoration: underline;
+            text-shadow: 0 0 10px rgba(118, 75, 162, 0.3);
+        }
+        
+        /* 徽章优化 */
+        .protocol-badge {
+            font-size: 0.75rem;
+            font-weight: 600;
+            padding: 4px 8px;
+            border-radius: 8px;
+        }
+        
+        .badge {
+            font-weight: 600;
+            border-radius: 8px;
+            padding: 5px 10px;
+        }
+        
+        /* 图表容器优化 */
+        .chart-container {
+            position: relative;
+            height: 350px;
+            width: 100%;
+            padding: 20px;
+            background: rgba(255, 255, 255, 0.5);
+            border-radius: 12px;
+        }
+        
+        /* 地图优化 */
+        #geo-map {
+            height: 450px;
+            width: 100%;
+            border-radius: 12px;
+            overflow: hidden;
+        }
+        
+        /* 标签页优化 */
+        .nav-tabs .nav-link {
+            border: none;
+            border-radius: 10px 10px 0 0;
+            margin-right: 5px;
+            font-weight: 600;
+            color: #718096;
+            transition: all 0.3s ease;
+        }
+        
+        .nav-tabs .nav-link.active {
+            background: linear-gradient(135deg, #667eea, #764ba2);
+            color: white;
+            border: none;
+        }
+        
+        .nav-tabs .nav-link:hover:not(.active) {
+            background: rgba(102, 126, 234, 0.1);
+            color: #667eea;
+        }
+        
+        /* 国旗图标优化 */
+        .country-flag {
+            width: 24px;
+            height: 18px;
+            margin-right: 8px;
+            border-radius: 3px;
+            box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+        }
+        
+        /* 容器优化 */
+        .container-fluid {
+            padding: 0 2rem;
+        }
+        
+        /* 响应式优化 */
+        @media (max-width: 768px) {
+            .container-fluid {
+                padding: 0 1rem;
+            }
+            
+            .metric-card {
+                padding: 1.5rem 1rem;
+            }
+            
+            .metric-value {
+                font-size: 2rem;
+            }
+            
+            .btn-control {
+                margin: 2px;
+                padding: 6px 12px;
+                font-size: 0.85rem;
+            }
+        }
+        
+        /* 加载动画 */
+        .loading-spinner {
+            display: inline-block;
+            width: 20px;
+            height: 20px;
+            border: 3px solid rgba(102, 126, 234, 0.3);
+            border-radius: 50%;
+            border-top-color: #667eea;
+            animation: spin 1s ease-in-out infinite;
+        }
+        
+        @keyframes spin {
+            to { transform: rotate(360deg); }
+        }
+        
+        /* 工具提示样式 */
+        .tooltip {
+            font-size: 0.875rem;
+        }
+        
+        /* 进度条样式 */
+        .progress {
+            height: 8px;
+            border-radius: 4px;
+            background: rgba(255, 255, 255, 0.2);
+        }
+        
+        .progress-bar {
+            border-radius: 4px;
+            background: linear-gradient(90deg, #667eea, #764ba2);
+        }
+        
+        /* 侧边栏导航样式 */
+        .sidebar {
+            width: 260px;
+            min-height: calc(100vh - 76px);
+            background: linear-gradient(180deg, rgba(26, 32, 44, 0.95), rgba(45, 55, 72, 0.95));
+            backdrop-filter: blur(10px);
+            border-right: 1px solid rgba(255, 255, 255, 0.1);
+            box-shadow: 4px 0 20px rgba(0, 0, 0, 0.1);
+            position: fixed;
+            top: 76px;
+            left: 0;
+            z-index: 1000;
+            overflow-y: auto;
+        }
+        
+        .sidebar-header {
+            padding: 1.5rem 1.25rem;
+            border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+        }
+        
+        .sidebar-header h4 {
+            color: white;
+            margin: 0;
+            font-size: 1.2rem;
+            font-weight: 700;
+        }
+        
+        .nav-menu {
+            list-style: none;
+            padding: 1rem 0;
+            margin: 0;
+        }
+        
+        .nav-item {
+            margin: 0.25rem 0;
+        }
+        
+        .nav-link {
+            display: flex;
+            align-items: center;
+            padding: 0.875rem 1.25rem;
+            color: rgba(255, 255, 255, 0.7);
+            text-decoration: none;
+            transition: all 0.3s ease;
+            border-radius: 0;
+            position: relative;
+        }
+        
+        .nav-link:hover {
+            background: rgba(102, 126, 234, 0.1);
+            color: white;
+            transform: translateX(5px);
+        }
+        
+        .nav-link.active {
+            background: linear-gradient(90deg, rgba(102, 126, 234, 0.2), rgba(118, 75, 162, 0.2));
+            color: white;
+            border-right: 3px solid #667eea;
+        }
+        
+        .nav-link.active::before {
+            content: '';
+            position: absolute;
+            left: 0;
+            top: 0;
+            bottom: 0;
+            width: 3px;
+            background: linear-gradient(180deg, #667eea, #764ba2);
+        }
+        
+        .nav-link i {
+            width: 20px;
+            text-align: center;
+        }
+        
+        .nav-link .badge {
+            font-size: 0.7rem;
+            padding: 3px 6px;
+        }
+        
+        .sidebar-status {
+            position: absolute;
+            bottom: 0;
+            left: 0;
+            right: 0;
+            padding: 1rem 1.25rem;
+            border-top: 1px solid rgba(255, 255, 255, 0.1);
+            background: rgba(0, 0, 0, 0.2);
+        }
+        
+        .status-item {
+            display: flex;
+            align-items: center;
+            color: rgba(255, 255, 255, 0.8);
+            font-size: 0.85rem;
+            margin-bottom: 0.75rem;
+        }
+        
+        .status-controls {
+            display: flex;
+            gap: 0.5rem;
+        }
+        
+        .status-controls .btn {
+            flex: 1;
+            padding: 0.375rem 0.5rem;
+            font-size: 0.75rem;
+        }
+        
+        /* 主内容区域 */
+        .main-content {
+            margin-left: 260px;
+            padding: 2rem;
+            min-height: calc(100vh - 76px);
+            width: calc(100% - 260px);
+        }
+        
+        .page-content {
+            display: none;
+        }
+        
+        .page-content.active {
+            display: block;
+        }
+        
+        .page-header {
+            display: flex;
+            justify-content: between;
+            align-items: center;
+            margin-bottom: 2rem;
+            padding-bottom: 1rem;
+            border-bottom: 2px solid rgba(102, 126, 234, 0.1);
+        }
+        
+        .page-header h2 {
+            color: #2d3748;
+            font-weight: 700;
+            margin: 0;
+            flex-grow: 1;
+        }
+        
+        /* 新布局专用样式 */
+        .sticky-top {
+            position: sticky;
+            top: 0;
+            z-index: 1020;
+        }
+        
+        /* 小型刷新按钮 */
+        .btn-outline-primary.btn-sm {
+            border-color: rgba(102, 126, 234, 0.3);
+            color: #667eea;
+            padding: 4px 8px;
+            font-size: 0.75rem;
+        }
+        
+        .btn-outline-primary.btn-sm:hover {
+            background: linear-gradient(135deg, #667eea, #764ba2);
+            border-color: #667eea;
+            color: white;
+        }
+        
+        /* 信息面板优化 */
+        .card-title {
+            font-size: 0.95rem !important;
+            font-weight: 600;
+        }
+        
+        /* 事件日志行样式 */
+        .events-row {
+            border-bottom: 1px solid rgba(0, 0, 0, 0.05);
+        }
+        
+        .events-row:last-child {
+            border-bottom: none;
+        }
+        
+        /* IP统计行悬停效果 */
+        .session-row:hover {
+            background: linear-gradient(135deg, rgba(102, 126, 234, 0.05), rgba(118, 75, 162, 0.05)) !important;
+        }
+        
+        /* 响应式设计 */
+        @media (max-width: 1200px) {
+            .sidebar {
+                width: 240px;
+            }
+            
+            .main-content {
+                margin-left: 240px;
+                width: calc(100% - 240px);
+            }
+        }
+        
+        @media (max-width: 768px) {
+            .sidebar {
+                width: 200px;
+            }
+            
+            .main-content {
+                margin-left: 200px;
+                width: calc(100% - 200px);
+                padding: 1rem;
+            }
+            
+            .page-header {
+                flex-direction: column;
+                align-items: flex-start;
+                gap: 1rem;
+            }
+        }
+    </style>
+</head>
+<body>
+    <!-- 导航栏 -->
+    <nav class="navbar navbar-expand-lg navbar-dark bg-dark">
+        <div class="container-fluid">
+            <a class="navbar-brand" href="#">
+                <i class="fas fa-network-wired me-2"></i>
+                NetFlow 监控系统
+            </a>
+            
+            <div class="navbar-nav ms-auto">
+                <div class="nav-item">
+                    <span class="navbar-text me-3">
+                        <span id="status-indicator" class="status-indicator status-inactive"></span>
+                        <span id="status-text">未连接</span>
+                    </span>
+                </div>
+                
+                <button id="btn-start" class="btn btn-success btn-sm btn-control">
+                    <i class="fas fa-play"></i> 开始监控
+                </button>
+                <button id="btn-stop" class="btn btn-danger btn-sm btn-control">
+                    <i class="fas fa-stop"></i> 停止监控
+                </button>
+                <button id="btn-refresh" class="btn btn-info btn-sm btn-control">
+                    <i class="fas fa-refresh"></i> 刷新
+                </button>
+            </div>
+        </div>
+    </nav>
+
+    <!-- 主要布局 -->
+    <div class="d-flex">
+        <!-- 左侧导航栏 -->
+        <nav class="sidebar">
+            <div class="sidebar-header">
+                <h4><i class="fas fa-network-wired me-2"></i>NetFlow</h4>
+            </div>
+            
+            <ul class="nav-menu">
+                <li class="nav-item">
+                    <a href="#" class="nav-link active" data-page="dashboard">
+                        <i class="fas fa-tachometer-alt me-2"></i>
+                        <span>仪表板</span>
+                    </a>
+                </li>
+                <li class="nav-item">
+                    <a href="#" class="nav-link" data-page="sessions">
+                        <i class="fas fa-exchange-alt me-2"></i>
+                        <span>会话列表</span>
+                        <span class="badge bg-success ms-auto" id="nav-sessions-count">0</span>
+                    </a>
+                </li>
+                <li class="nav-item">
+                    <a href="#" class="nav-link" data-page="ip-stats">
+                        <i class="fas fa-server me-2"></i>
+                        <span>IP统计</span>
+                        <span class="badge bg-info ms-auto" id="nav-ips-count">0</span>
+                    </a>
+                </li>
+                <li class="nav-item">
+                    <a href="#" class="nav-link" data-page="geo-map">
+                        <i class="fas fa-globe me-2"></i>
+                        <span>地理位置</span>
+                    </a>
+                </li>
+                <li class="nav-item">
+                    <a href="#" class="nav-link" data-page="events">
+                        <i class="fas fa-list me-2"></i>
+                        <span>事件日志</span>
+                    </a>
+                </li>
+                <li class="nav-item">
+                    <a href="#" class="nav-link" data-page="traffic-analysis">
+                        <i class="fas fa-chart-line me-2"></i>
+                        <span>流量分析</span>
+                    </a>
+                </li>
+            </ul>
+
+            <!-- 系统状态 -->
+            <div class="sidebar-status">
+                <div class="status-item">
+                    <span id="sidebar-status-indicator" class="status-indicator status-inactive"></span>
+                    <span id="sidebar-status-text">未连接</span>
+                </div>
+                <div class="status-controls">
+                    <button id="sidebar-btn-start" class="btn btn-success btn-sm">
+                        <i class="fas fa-play"></i>
+                    </button>
+                    <button id="sidebar-btn-stop" class="btn btn-danger btn-sm">
+                        <i class="fas fa-stop"></i>
+                    </button>
+                </div>
+            </div>
+        </nav>
+
+        <!-- 右侧内容区域 -->
+        <main class="main-content">
+            <!-- 仪表板页面 -->
+            <div id="page-dashboard" class="page-content active">
+                <div class="page-header">
+                    <h2><i class="fas fa-tachometer-alt me-2"></i>系统仪表板</h2>
+                    <button class="btn btn-outline-primary btn-sm" onclick="loadInitialData()">
+                        <i class="fas fa-sync-alt me-1"></i>刷新数据
+                    </button>
+                </div>
+
+                <!-- 状态概览 -->
+                <div class="row mb-4">
+                    <div class="col-md-3">
+                        <div class="card metric-card">
+                            <div class="metric-value" id="active-sessions">0</div>
+                            <div class="metric-label">活跃会话</div>
+                        </div>
+                    </div>
+                    <div class="col-md-3">
+                        <div class="card metric-card">
+                            <div class="metric-value" id="total-ips">0</div>
+                            <div class="metric-label">总IP数</div>
+                        </div>
+                    </div>
+                    <div class="col-md-3">
+                        <div class="card metric-card">
+                            <div class="metric-value" id="total-bytes">0</div>
+                            <div class="metric-label">总流量</div>
+                        </div>
+                    </div>
+                    <div class="col-md-3">
+                        <div class="card metric-card">
+                            <div class="metric-value" id="total-packets">0</div>
+                            <div class="metric-label">总数据包</div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- 主要内容区域 -->
+                <div class="row">
+                    <!-- 流量图表 -->
+                    <div class="col-lg-8">
+                        <div class="card">
+                            <div class="card-header">
+                                <h5 class="card-title mb-0">
+                                    <i class="fas fa-chart-line me-2"></i>实时流量监控
+                                </h5>
+                            </div>
+                            <div class="card-body">
+                                <div class="chart-container">
+                                    <canvas id="traffic-chart"></canvas>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- TOP流量IP -->
+                    <div class="col-lg-4">
+                        <div class="card">
+                            <div class="card-header">
+                                <h5 class="card-title mb-0">
+                                    <i class="fas fa-trophy me-2"></i>TOP 流量IP
+                                </h5>
+                            </div>
+                            <div class="card-body">
+                                <div class="table-container">
+                                    <table class="table table-sm table-hover">
+                                        <thead>
+                                            <tr>
+                                                <th>IP地址</th>
+                                                <th>流量</th>
+                                                <th>位置</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody id="top-ips-table">
+                                            <tr>
+                                                <td colspan="3" class="text-center text-muted">暂无数据</td>
+                                            </tr>
+                                        </tbody>
+                                    </table>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- 会话列表页面 -->
+            <div id="page-sessions" class="page-content">
+                <div class="page-header">
+                    <h2><i class="fas fa-exchange-alt me-2"></i>网络会话列表</h2>
+                    <div class="d-flex align-items-center">
+                        <small class="text-muted me-3">
+                            <i class="fas fa-circle text-success me-1"></i>
+                            <span id="sessions-count">0</span> 个活跃会话
+                        </small>
+                        <button class="btn btn-outline-primary btn-sm" onclick="loadSessions()">
+                            <i class="fas fa-sync-alt me-1"></i>刷新
+                        </button>
+                    </div>
+                </div>
+
+                <div class="card">
+                    <div class="card-body p-0">
+                        <div class="table-container" style="max-height: calc(100vh - 200px);">
+                            <table class="table table-striped table-hover mb-0">
+                                <thead class="table-dark sticky-top">
+                                    <tr>
+                                        <th class="sortable-header" data-sort="src_ip">
+                                            源IP:端口
+                                            <span class="sort-icon" id="sort-src_ip"></span>
+                                        </th>
+                                        <th class="sortable-header" data-sort="dst_ip">
+                                            目标IP:端口
+                                            <span class="sort-icon" id="sort-dst_ip"></span>
+                                        </th>
+                                        <th class="sortable-header" data-sort="protocol">
+                                            协议
+                                            <span class="sort-icon" id="sort-protocol"></span>
+                                        </th>
+                                        <th class="sortable-header" data-sort="state">
+                                            状态
+                                            <span class="sort-icon" id="sort-state"></span>
+                                        </th>
+                                        <th class="sortable-header" data-sort="total_packets">
+                                            数据包
+                                            <span class="sort-icon" id="sort-total_packets"></span>
+                                        </th>
+                                        <th class="sortable-header" data-sort="total_bytes">
+                                            流量
+                                            <span class="sort-icon" id="sort-total_bytes"></span>
+                                        </th>
+                                        <th class="sortable-header" data-sort="duration">
+                                            持续时间
+                                            <span class="sort-icon" id="sort-duration"></span>
+                                        </th>
+                                        <th class="sortable-header" data-sort="last_seen">
+                                            最后活跃
+                                            <span class="sort-icon active desc" id="sort-last_seen"></span>
+                                        </th>
+                                    </tr>
+                                </thead>
+                                <tbody id="sessions-table">
+                                    <tr>
+                                        <td colspan="8" class="text-center text-muted py-4">暂无数据</td>
+                                    </tr>
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- IP统计页面 -->
+            <div id="page-ip-stats" class="page-content">
+                <div class="page-header">
+                    <h2><i class="fas fa-server me-2"></i>IP流量统计</h2>
+                    <button class="btn btn-outline-primary btn-sm" onclick="loadIPStats()">
+                        <i class="fas fa-sync-alt me-1"></i>刷新
+                    </button>
+                </div>
+
+                <div class="card">
+                    <div class="card-body p-0">
+                        <div class="table-container" style="max-height: calc(100vh - 200px);">
+                            <table class="table table-striped table-hover mb-0">
+                                <thead class="table-dark sticky-top">
+                                    <tr>
+                                        <th class="sortable-header" data-sort="ip" data-table="ip-stats">
+                                            IP地址
+                                            <span class="sort-icon" id="sort-ip-ip"></span>
+                                        </th>
+                                        <th class="sortable-header" data-sort="bytes_sent" data-table="ip-stats">
+                                            发送流量
+                                            <span class="sort-icon" id="sort-ip-bytes_sent"></span>
+                                        </th>
+                                        <th class="sortable-header" data-sort="bytes_received" data-table="ip-stats">
+                                            接收流量
+                                            <span class="sort-icon" id="sort-ip-bytes_received"></span>
+                                        </th>
+                                        <th class="sortable-header" data-sort="total_bytes" data-table="ip-stats">
+                                            总流量
+                                            <span class="sort-icon active desc" id="sort-ip-total_bytes"></span>
+                                        </th>
+                                        <th class="sortable-header" data-sort="session_count" data-table="ip-stats">
+                                            会话数
+                                            <span class="sort-icon" id="sort-ip-session_count"></span>
+                                        </th>
+                                        <th>国家/地区</th>
+                                        <th>ISP</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="ip-stats-table-full">
+                                    <tr>
+                                        <td colspan="7" class="text-center text-muted py-4">暂无数据</td>
+                                    </tr>
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- 地理位置页面 -->
+            <div id="page-geo-map" class="page-content">
+                <div class="page-header">
+                    <h2><i class="fas fa-globe me-2"></i>地理位置分布</h2>
+                    <button class="btn btn-outline-primary btn-sm" onclick="loadGeoMapData()">
+                        <i class="fas fa-sync-alt me-1"></i>刷新
+                    </button>
+                </div>
+
+                <div class="card">
+                    <div class="card-body p-0">
+                        <div id="geo-map-full" style="height: calc(100vh - 200px); border-radius: 0 0 12px 12px;"></div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- 事件日志页面 -->
+            <div id="page-events" class="page-content">
+                <div class="page-header">
+                    <h2><i class="fas fa-list me-2"></i>系统事件日志</h2>
+                    <button class="btn btn-outline-primary btn-sm" onclick="loadEvents()">
+                        <i class="fas fa-sync-alt me-1"></i>刷新
+                    </button>
+                </div>
+
+                <div class="card">
+                    <div class="card-body p-0">
+                        <div class="table-container" style="max-height: calc(100vh - 200px);">
+                            <table class="table table-striped table-hover mb-0">
+                                <thead class="table-dark sticky-top">
+                                    <tr>
+                                        <th style="width: 160px;">时间</th>
+                                        <th style="width: 120px;">类型</th>
+                                        <th>描述</th>
+                                        <th style="width: 100px;">严重性</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="events-table-full">
+                                    <tr>
+                                        <td colspan="4" class="text-center text-muted py-4">暂无数据</td>
+                                    </tr>
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- 流量分析页面 -->
+            <div id="page-traffic-analysis" class="page-content">
+                <div class="page-header">
+                    <h2><i class="fas fa-chart-line me-2"></i>流量分析</h2>
+                    <button class="btn btn-outline-primary btn-sm" onclick="loadTrafficHistory()">
+                        <i class="fas fa-sync-alt me-1"></i>刷新
+                    </button>
+                </div>
+
+                <div class="row">
+                    <div class="col-12">
+                        <div class="card">
+                            <div class="card-header">
+                                <h5 class="card-title mb-0">
+                                    <i class="fas fa-chart-area me-2"></i>详细流量分析
+                                </h5>
+                            </div>
+                            <div class="card-body">
+                                <div style="height: 500px; position: relative;">
+                                    <canvas id="traffic-chart-detailed"></canvas>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="row mt-4">
+                    <div class="col-md-6">
+                        <div class="card">
+                            <div class="card-header">
+                                <h6 class="card-title mb-0">
+                                    <i class="fas fa-network-wired me-2"></i>协议分布
+                                </h6>
+                            </div>
+                            <div class="card-body">
+                                <div style="height: 300px; position: relative;">
+                                    <canvas id="protocol-chart"></canvas>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="col-md-6">
+                        <div class="card">
+                            <div class="card-header">
+                                <h6 class="card-title mb-0">
+                                    <i class="fas fa-globe-asia me-2"></i>地理分布
+                                </h6>
+                            </div>
+                            <div class="card-body">
+                                <div style="height: 300px; position: relative;">
+                                    <canvas id="country-chart"></canvas>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </main>
+    </div>
+
+    <!-- Bootstrap JS -->
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/js/bootstrap.bundle.min.js"></script>
+    
+    <script>
+        // 全局变量
+        let socket;
+        let trafficChart;
+        let geoMap;
+        let isMonitoring = false;
+        
+        // 排序状态
+        let sessionsSortState = {
+            orderBy: 'last_seen',
+            orderDirection: 'desc'
+        };
+        let ipStatsSortState = {
+            orderBy: 'total_bytes',
+            orderDirection: 'desc'
+        };
+
+        // 初始化
+        document.addEventListener('DOMContentLoaded', function() {
+            initializeSocketIO();
+            initializeTrafficChart();
+            bindEventListeners();
+            loadInitialData();
+        });
+
+        // 初始化Socket.IO
+        function initializeSocketIO() {
+            socket = io({
+                timeout: 20000,
+                forceNew: true,
+                reconnection: true,
+                reconnectionDelay: 1000,
+                reconnectionAttempts: 5,
+                maxReconnectionAttempts: 5
+            });
+            
+            socket.on('connect', function() {
+                console.log('Socket.IO 连接成功');
+                updateStatus(true, '已连接');
+            });
+            
+            socket.on('disconnect', function(reason) {
+                console.log('Socket.IO 连接断开:', reason);
+                updateStatus(false, '连接断开');
+            });
+            
+            socket.on('connect_error', function(error) {
+                console.log('Socket.IO 连接错误:', error);
+                updateStatus(false, '连接错误');
+            });
+            
+            socket.on('reconnect', function(attemptNumber) {
+                console.log('Socket.IO 重连成功，尝试次数:', attemptNumber);
+                updateStatus(true, '重连成功');
+            });
+            
+            socket.on('reconnect_error', function(error) {
+                console.log('Socket.IO 重连失败:', error);
+            });
+            
+            socket.on('real_time_update', function(data) {
+                updateRealTimeData(data);
+            });
+        }
+
+        // 初始化流量图表
+        function initializeTrafficChart() {
+            const ctx = document.getElementById('traffic-chart').getContext('2d');
+            
+            // 创建渐变色
+            const gradient1 = ctx.createLinearGradient(0, 0, 0, 300);
+            gradient1.addColorStop(0, 'rgba(102, 126, 234, 0.8)');
+            gradient1.addColorStop(1, 'rgba(102, 126, 234, 0.1)');
+            
+            const gradient2 = ctx.createLinearGradient(0, 0, 0, 300);
+            gradient2.addColorStop(0, 'rgba(118, 75, 162, 0.8)');
+            gradient2.addColorStop(1, 'rgba(118, 75, 162, 0.1)');
+            
+            trafficChart = new Chart(ctx, {
+                type: 'line',
+                data: {
+                    labels: [],
+                    datasets: [{
+                        label: '📊 流量 (Bytes/s)',
+                        data: [],
+                        borderColor: '#667eea',
+                        backgroundColor: gradient1,
+                        borderWidth: 3,
+                        fill: true,
+                        tension: 0.4,
+                        pointBackgroundColor: '#667eea',
+                        pointBorderColor: '#ffffff',
+                        pointBorderWidth: 2,
+                        pointRadius: 4,
+                        pointHoverRadius: 6
+                    }, {
+                        label: '📦 数据包 (Packets/s)',
+                        data: [],
+                        borderColor: '#764ba2',
+                        backgroundColor: gradient2,
+                        borderWidth: 3,
+                        fill: true,
+                        tension: 0.4,
+                        pointBackgroundColor: '#764ba2',
+                        pointBorderColor: '#ffffff',
+                        pointBorderWidth: 2,
+                        pointRadius: 4,
+                        pointHoverRadius: 6,
+                        yAxisID: 'y1'
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    interaction: {
+                        intersect: false,
+                        mode: 'index'
+                    },
+                    scales: {
+                        x: {
+                            grid: {
+                                color: 'rgba(102, 126, 234, 0.1)',
+                                borderColor: 'rgba(102, 126, 234, 0.2)'
+                            },
+                            ticks: {
+                                color: '#718096',
+                                font: {
+                                    weight: '500'
+                                }
+                            }
+                        },
+                        y: {
+                            type: 'linear',
+                            display: true,
+                            position: 'left',
+                            grid: {
+                                color: 'rgba(102, 126, 234, 0.1)',
+                                borderColor: 'rgba(102, 126, 234, 0.2)'
+                            },
+                            ticks: {
+                                color: '#667eea',
+                                font: {
+                                    weight: '600'
+                                },
+                                callback: function(value) {
+                                    return formatBytes(value);
+                                }
+                            }
+                        },
+                        y1: {
+                            type: 'linear',
+                            display: true,
+                            position: 'right',
+                            grid: {
+                                drawOnChartArea: false,
+                            },
+                            ticks: {
+                                color: '#764ba2',
+                                font: {
+                                    weight: '600'
+                                },
+                                callback: function(value) {
+                                    return formatNumber(value);
+                                }
+                            }
+                        }
+                    },
+                    plugins: {
+                        legend: {
+                            display: true,
+                            position: 'top',
+                            labels: {
+                                color: '#4a5568',
+                                font: {
+                                    size: 14,
+                                    weight: '600'
+                                },
+                                usePointStyle: true,
+                                pointStyle: 'circle'
+                            }
+                        },
+                        tooltip: {
+                            backgroundColor: 'rgba(26, 32, 44, 0.95)',
+                            titleColor: '#ffffff',
+                            bodyColor: '#ffffff',
+                            borderColor: '#667eea',
+                            borderWidth: 1,
+                            cornerRadius: 8,
+                            displayColors: true,
+                            callbacks: {
+                                title: function(context) {
+                                    return '时间: ' + context[0].label;
+                                },
+                                label: function(context) {
+                                    let label = context.dataset.label || '';
+                                    if (label) {
+                                        label += ': ';
+                                    }
+                                    if (context.dataset.label.includes('流量')) {
+                                        label += formatBytes(context.parsed.y);
+                                    } else {
+                                        label += formatNumber(context.parsed.y);
+                                    }
+                                    return label;
+                                }
+                            }
+                        }
+                    },
+                    animation: {
+                        duration: 1000,
+                        easing: 'easeInOutQuart'
+                    }
+                }
+            });
+        }
+
+        // 初始化地理位置地图
+        function initializeGeoMap() {
+            // 检查容器是否存在
+            const mapContainer = document.getElementById('geo-map-full');
+            if (!mapContainer || geoMap) {
+                return; // 容器不存在或地图已初始化
+            }
+            
+            try {
+                geoMap = L.map('geo-map-full').setView([39.9042, 116.4074], 2);
+                
+                L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+                    attribution: '© OpenStreetMap contributors'
+                }).addTo(geoMap);
+            } catch (error) {
+                console.error('地图初始化失败:', error);
+            }
+        }
+
+        // 绑定事件监听器
+        function bindEventListeners() {
+            document.getElementById('btn-start').addEventListener('click', startMonitoring);
+            document.getElementById('btn-stop').addEventListener('click', stopMonitoring);
+            document.getElementById('btn-refresh').addEventListener('click', loadInitialData);
+            
+            // 侧边栏控制按钮
+            document.getElementById('sidebar-btn-start').addEventListener('click', startMonitoring);
+            document.getElementById('sidebar-btn-stop').addEventListener('click', stopMonitoring);
+            
+            // 页面导航
+            bindNavigationListeners();
+            
+            // 绑定排序事件
+            bindSortEventListeners();
+            
+            // 仪表板页面不需要地图初始化
+        }
+        
+        // 绑定导航事件监听器
+        function bindNavigationListeners() {
+            document.querySelectorAll('.nav-link').forEach(link => {
+                link.addEventListener('click', function(e) {
+                    e.preventDefault();
+                    
+                    const targetPage = this.getAttribute('data-page');
+                    if (targetPage) {
+                        switchPage(targetPage);
+                    }
+                });
+            });
+        }
+        
+        // 页面切换功能
+        function switchPage(pageId) {
+            // 隐藏所有页面
+            document.querySelectorAll('.page-content').forEach(page => {
+                page.classList.remove('active');
+            });
+            
+            // 移除所有导航链接的active状态
+            document.querySelectorAll('.nav-link').forEach(link => {
+                link.classList.remove('active');
+            });
+            
+            // 显示目标页面
+            const targetPage = document.getElementById(`page-${pageId}`);
+            if (targetPage) {
+                targetPage.classList.add('active');
+            }
+            
+            // 激活对应的导航链接
+            const targetNav = document.querySelector(`.nav-link[data-page="${pageId}"]`);
+            if (targetNav) {
+                targetNav.classList.add('active');
+            }
+            
+            // 根据页面类型执行特定操作
+            switch(pageId) {
+                case 'dashboard':
+                    loadInitialData();
+                    break;
+                case 'sessions':
+                    loadSessions();
+                    break;
+                case 'ip-stats':
+                    loadIPStatsPage();
+                    break;
+                case 'geo-map':
+                    initializeGeoMapFull();
+                    break;
+                case 'events':
+                    loadEventsPage();
+                    break;
+                case 'traffic-analysis':
+                    initializeTrafficAnalysis();
+                    break;
+            }
+        }
+        
+        // 绑定排序事件监听器
+        function bindSortEventListeners() {
+            // 会话表格排序
+            document.querySelectorAll('.sortable-header[data-table!="ip-stats"]').forEach(header => {
+                header.addEventListener('click', function() {
+                    const sortField = this.getAttribute('data-sort');
+                    handleSessionSort(sortField);
+                });
+            });
+            
+            // IP统计表格排序
+            document.querySelectorAll('.sortable-header[data-table="ip-stats"]').forEach(header => {
+                header.addEventListener('click', function() {
+                    const sortField = this.getAttribute('data-sort');
+                    handleIPStatsSort(sortField);
+                });
+            });
+        }
+        
+        // 处理会话表格排序
+        function handleSessionSort(sortField) {
+            if (sessionsSortState.orderBy === sortField) {
+                // 切换排序方向
+                sessionsSortState.orderDirection = sessionsSortState.orderDirection === 'asc' ? 'desc' : 'asc';
+            } else {
+                // 更改排序字段，默认降序
+                sessionsSortState.orderBy = sortField;
+                sessionsSortState.orderDirection = 'desc';
+            }
+            
+            updateSortIcons('sessions', sortField, sessionsSortState.orderDirection);
+            loadSessions();
+        }
+        
+        // 处理IP统计表格排序
+        function handleIPStatsSort(sortField) {
+            if (ipStatsSortState.orderBy === sortField) {
+                // 切换排序方向
+                ipStatsSortState.orderDirection = ipStatsSortState.orderDirection === 'asc' ? 'desc' : 'asc';
+            } else {
+                // 更改排序字段，默认降序
+                ipStatsSortState.orderBy = sortField;
+                ipStatsSortState.orderDirection = 'desc';
+            }
+            
+            updateSortIcons('ip-stats', sortField, ipStatsSortState.orderDirection);
+            loadIPStats();
+        }
+        
+        // 更新排序图标
+        function updateSortIcons(tableType, activeField, direction) {
+            // 清除所有排序图标
+            if (tableType === 'sessions') {
+                document.querySelectorAll('.sortable-header[data-table!="ip-stats"] .sort-icon').forEach(icon => {
+                    icon.className = 'sort-icon';
+                });
+                // 激活当前排序字段的图标
+                const activeIcon = document.getElementById(`sort-${activeField}`);
+                if (activeIcon) {
+                    activeIcon.className = `sort-icon active ${direction}`;
+                }
+            } else if (tableType === 'ip-stats') {
+                document.querySelectorAll('.sortable-header[data-table="ip-stats"] .sort-icon').forEach(icon => {
+                    icon.className = 'sort-icon';
+                });
+                // 激活当前排序字段的图标
+                const activeIcon = document.getElementById(`sort-ip-${activeField}`);
+                if (activeIcon) {
+                    activeIcon.className = `sort-icon active ${direction}`;
+                }
+            }
+        }
+
+        // 更新状态
+        function updateStatus(connected, text) {
+            const indicator = document.getElementById('status-indicator');
+            const statusText = document.getElementById('status-text');
+            const sidebarIndicator = document.getElementById('sidebar-status-indicator');
+            const sidebarStatusText = document.getElementById('sidebar-status-text');
+            
+            // 主导航栏状态更新
+            if (indicator) {
+                indicator.style.transform = 'scale(0.8)';
+                setTimeout(() => {
+                    indicator.className = `status-indicator ${connected ? 'status-active' : 'status-inactive'}`;
+                    indicator.style.transform = 'scale(1)';
+                }, 150);
+            }
+            
+            if (statusText) {
+                statusText.style.opacity = '0.5';
+                setTimeout(() => {
+                    statusText.textContent = connected ? '🟢 ' + text : '🔴 ' + text;
+                    statusText.style.opacity = '1';
+                }, 150);
+            }
+            
+            // 侧边栏状态更新
+            if (sidebarIndicator) {
+                sidebarIndicator.style.transform = 'scale(0.8)';
+                setTimeout(() => {
+                    sidebarIndicator.className = `status-indicator ${connected ? 'status-active' : 'status-inactive'}`;
+                    sidebarIndicator.style.transform = 'scale(1)';
+                }, 150);
+            }
+            
+            if (sidebarStatusText) {
+                sidebarStatusText.style.opacity = '0.5';
+                setTimeout(() => {
+                    sidebarStatusText.textContent = text;
+                    sidebarStatusText.style.opacity = '1';
+                }, 150);
+            }
+        }
+
+        // 开始监控
+        function startMonitoring() {
+            const startBtn = document.getElementById('btn-start');
+            const originalHTML = startBtn.innerHTML;
+            
+            // 显示加载状态
+            startBtn.innerHTML = '<div class="loading-spinner me-2"></div>启动中...';
+            startBtn.disabled = true;
+            
+            fetch('/api/start-monitoring', { method: 'POST' })
+                .then(response => response.json())
+                .then(data => {
+                    if (data.error) {
+                        showNotification('启动监控失败: ' + data.error, 'error');
+                    } else {
+                        isMonitoring = true;
+                        updateControlButtons();
+                        showNotification('🚀 监控已成功启动！', 'success');
+                    }
+                })
+                .catch(error => {
+                    console.error('启动监控失败:', error);
+                    showNotification('⚠️ 启动监控失败，请检查网络连接', 'error');
+                })
+                .finally(() => {
+                    startBtn.innerHTML = originalHTML;
+                    startBtn.disabled = false;
+                });
+        }
+
+        // 停止监控
+        function stopMonitoring() {
+            const stopBtn = document.getElementById('btn-stop');
+            const originalHTML = stopBtn.innerHTML;
+            
+            // 显示加载状态
+            stopBtn.innerHTML = '<div class="loading-spinner me-2"></div>停止中...';
+            stopBtn.disabled = true;
+            
+            fetch('/api/stop-monitoring', { method: 'POST' })
+                .then(response => response.json())
+                .then(data => {
+                    if (data.error) {
+                        showNotification('停止监控失败: ' + data.error, 'error');
+                    } else {
+                        isMonitoring = false;
+                        updateControlButtons();
+                        showNotification('⏹️ 监控已停止', 'info');
+                    }
+                })
+                .catch(error => {
+                    console.error('停止监控失败:', error);
+                    showNotification('⚠️ 停止监控失败，请检查网络连接', 'error');
+                })
+                .finally(() => {
+                    stopBtn.innerHTML = originalHTML;
+                    stopBtn.disabled = false;
+                });
+        }
+        
+        // 显示通知
+        function showNotification(message, type = 'info') {
+            // 创建通知元素
+            const notification = document.createElement('div');
+            notification.className = `alert alert-${type === 'error' ? 'danger' : type === 'success' ? 'success' : 'info'} alert-dismissible fade show position-fixed`;
+            notification.style.cssText = `
+                top: 80px;
+                right: 20px;
+                z-index: 9999;
+                min-width: 300px;
+                border-radius: 12px;
+                box-shadow: 0 8px 32px rgba(0, 0, 0, 0.15);
+                backdrop-filter: blur(10px);
+                border: none;
+            `;
+            
+            notification.innerHTML = `
+                <div class="d-flex align-items-center">
+                    <div class="me-2">
+                        ${type === 'success' ? '✅' : type === 'error' ? '❌' : 'ℹ️'}
+                    </div>
+                    <div class="flex-grow-1">${message}</div>
+                    <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+                </div>
+            `;
+            
+            document.body.appendChild(notification);
+            
+            // 自动移除通知
+            setTimeout(() => {
+                if (notification.parentNode) {
+                    notification.remove();
+                }
+            }, 5000);
+        }
+
+        // 更新控制按钮状态
+        function updateControlButtons() {
+            const startBtn = document.getElementById('btn-start');
+            const stopBtn = document.getElementById('btn-stop');
+            const sidebarStartBtn = document.getElementById('sidebar-btn-start');
+            const sidebarStopBtn = document.getElementById('sidebar-btn-stop');
+            
+            // 主导航栏按钮
+            if (startBtn) startBtn.disabled = isMonitoring;
+            if (stopBtn) stopBtn.disabled = !isMonitoring;
+            
+            // 侧边栏按钮
+            if (sidebarStartBtn) sidebarStartBtn.disabled = isMonitoring;
+            if (sidebarStopBtn) sidebarStopBtn.disabled = !isMonitoring;
+        }
+
+        // 加载初始数据
+        function loadInitialData() {
+            loadStatus();
+            loadSessions();
+            loadIPStats();
+            loadTopTalkers();
+            loadTrafficHistory();
+            loadEvents();
+        }
+
+        // 加载状态信息
+        function loadStatus() {
+            fetch('/api/status')
+                .then(response => response.json())
+                .then(data => {
+                    isMonitoring = data.monitoring;
+                    updateControlButtons();
+                    
+                    document.getElementById('active-sessions').textContent = data.active_sessions || 0;
+                    document.getElementById('total-ips').textContent = data.total_ips || 0;
+                    document.getElementById('total-bytes').textContent = formatBytes(data.total_bytes || 0);
+                    document.getElementById('total-packets').textContent = formatNumber(data.total_packets || 0);
+                })
+                .catch(error => console.error('加载状态失败:', error));
+        }
+
+        // 加载会话列表
+        function loadSessions() {
+            const tbody = document.getElementById('sessions-table');
+            const url = `/api/sessions?order_by=${sessionsSortState.orderBy}&order_direction=${sessionsSortState.orderDirection}`;
+            
+            // 显示加载状态
+            tbody.innerHTML = `
+                <tr>
+                    <td colspan="8" class="text-center py-4">
+                        <div class="loading-spinner me-2"></div>
+                        <span class="text-muted">正在加载会话数据...</span>
+                    </td>
+                </tr>
+            `;
+            
+            fetch(url)
+                .then(response => response.json())
+                .then(data => {
+                    tbody.innerHTML = '';
+                    
+                    // 更新会话计数
+                    const sessionsCount = document.getElementById('sessions-count');
+                    if (sessionsCount) {
+                        sessionsCount.textContent = data.sessions ? data.sessions.length : 0;
+                    }
+                    
+                    if (data.sessions && data.sessions.length > 0) {
+                        data.sessions.forEach((session, index) => {
+                            const row = createSessionRow(session);
+                            // 添加淡入动画
+                            row.style.opacity = '0';
+                            row.style.transform = 'translateY(20px)';
+                            tbody.appendChild(row);
+                            
+                            // 延迟动画
+                            setTimeout(() => {
+                                row.style.transition = 'all 0.3s ease';
+                                row.style.opacity = '1';
+                                row.style.transform = 'translateY(0)';
+                            }, index * 50);
+                        });
+                    } else {
+                        tbody.innerHTML = `
+                            <tr>
+                                <td colspan="8" class="text-center py-4">
+                                    <i class="fas fa-info-circle text-muted fs-2 mb-2"></i>
+                                    <div class="text-muted">暂无会话数据</div>
+                                    <small class="text-muted">开始监控后将显示网络会话信息</small>
+                                </td>
+                            </tr>
+                        `;
+                    }
+                })
+                .catch(error => {
+                    console.error('加载会话列表失败:', error);
+                    tbody.innerHTML = `
+                        <tr>
+                            <td colspan="8" class="text-center py-4 text-danger">
+                                <i class="fas fa-exclamation-triangle fs-2 mb-2"></i>
+                                <div>加载失败</div>
+                                <small>请检查网络连接或刷新页面重试</small>
+                            </td>
+                        </tr>
+                    `;
+                });
+        }
+
+        // 创建会话行
+        function createSessionRow(session) {
+            const row = document.createElement('tr');
+            row.className = 'session-row';
+            
+            // 协议颜色映射
+            const protocolColors = {
+                'TCP': 'primary',
+                'UDP': 'info', 
+                'ICMP': 'warning',
+                'OTHER': 'secondary'
+            };
+            
+            // 状态颜色和图标
+            const stateInfo = session.state === 'ACTIVE' 
+                ? { color: 'success', icon: '🟢' }
+                : { color: 'secondary', icon: '⚫' };
+            
+            row.innerHTML = `
+                <td>
+                    <span class="fw-bold">${session.src_ip}</span>
+                    <span class="text-muted">:${session.src_port}</span>
+                </td>
+                <td>
+                    <span class="fw-bold">${session.dst_ip}</span>
+                    <span class="text-muted">:${session.dst_port}</span>
+                </td>
+                <td>
+                    <span class="badge bg-${protocolColors[session.protocol] || 'secondary'} protocol-badge">
+                        ${session.protocol}
+                    </span>
+                </td>
+                <td>
+                    <span class="badge bg-${stateInfo.color}">
+                        ${stateInfo.icon} ${session.state}
+                    </span>
+                </td>
+                <td>
+                    <span class="fw-bold text-info">${formatNumber(session.total_packets)}</span>
+                </td>
+                <td>
+                    <span class="fw-bold text-primary">${formatBytes(session.total_bytes)}</span>
+                </td>
+                <td>
+                    <span class="text-success">${formatDuration(session.duration)}</span>
+                </td>
+                <td>
+                    <small class="text-muted">${formatDateTime(session.last_seen)}</small>
+                </td>
+            `;
+            
+            // 添加工具提示
+            row.setAttribute('title', `会话详情: ${session.src_ip}:${session.src_port} ↔ ${session.dst_ip}:${session.dst_port}`);
+            
+            return row;
+        }
+
+        // 加载IP统计
+        function loadIPStats() {
+            const tbody = document.getElementById('ip-stats-table');
+            const url = `/api/ip-stats?order_by=${ipStatsSortState.orderBy}&order_direction=${ipStatsSortState.orderDirection}`;
+            
+            // 显示加载状态
+            tbody.innerHTML = `
+                <tr>
+                    <td colspan="3" class="text-center py-3">
+                        <div class="loading-spinner me-2"></div>
+                        <span class="text-muted">加载中...</span>
+                    </td>
+                </tr>
+            `;
+            
+            fetch(url)
+                .then(response => response.json())
+                .then(data => {
+                    tbody.innerHTML = '';
+                    
+                    if (data.ip_stats && data.ip_stats.length > 0) {
+                        data.ip_stats.forEach((stat, index) => {
+                            const row = createIPStatsRow(stat);
+                            // 添加淡入动画
+                            row.style.opacity = '0';
+                            row.style.transform = 'translateY(20px)';
+                            tbody.appendChild(row);
+                            
+                            // 延迟动画
+                            setTimeout(() => {
+                                row.style.transition = 'all 0.3s ease';
+                                row.style.opacity = '1';
+                                row.style.transform = 'translateY(0)';
+                            }, index * 50);
+                        });
+                    } else {
+                        tbody.innerHTML = `
+                            <tr>
+                                <td colspan="3" class="text-center py-3">
+                                    <i class="fas fa-chart-bar text-muted mb-1"></i>
+                                    <div class="text-muted" style="font-size: 0.85rem;">暂无数据</div>
+                                </td>
+                            </tr>
+                        `;
+                    }
+                })
+                .catch(error => {
+                    console.error('加载IP统计失败:', error);
+                    tbody.innerHTML = `
+                        <tr>
+                            <td colspan="3" class="text-center py-3 text-danger">
+                                <i class="fas fa-exclamation-triangle mb-1"></i>
+                                <div style="font-size: 0.85rem;">加载失败</div>
+                            </td>
+                        </tr>
+                    `;
+                });
+        }
+
+        // 创建IP统计行（简化版本）
+        function createIPStatsRow(stat) {
+            const row = document.createElement('tr');
+            row.className = 'session-row';
+            
+            const location = stat.location || {};
+            const countryFlag = location.country_code ? 
+                `<img src="https://flagcdn.com/12x9/${location.country_code.toLowerCase()}.png" style="width: 16px; height: 12px; margin-right: 4px; border-radius: 2px;">` : '🌍';
+            
+            row.innerHTML = `
+                <td>
+                    <div class="d-flex align-items-center">
+                        ${countryFlag}
+                        <div>
+                            <a href="#" class="ip-link fw-bold" style="font-size: 0.85rem;">${stat.ip}</a>
+                            <div style="font-size: 0.7rem; color: #6c757d;">
+                                ${location.country || '未知'}
+                            </div>
+                        </div>
+                    </div>
+                </td>
+                <td>
+                    <div class="text-end">
+                        <div class="fw-bold text-primary" style="font-size: 0.85rem;">
+                            ${formatBytes(stat.total_bytes)}
+                        </div>
+                        <div style="font-size: 0.7rem; color: #6c757d;">
+                            ↑${formatBytes(stat.bytes_sent)} ↓${formatBytes(stat.bytes_received)}
+                        </div>
+                    </div>
+                </td>
+                <td class="text-center">
+                    <span class="badge bg-info rounded-pill" style="font-size: 0.75rem;">
+                        ${stat.session_count}
+                    </span>
+                </td>
+            `;
+            
+            // 添加工具提示
+            row.setAttribute('title', `${stat.ip}\n总流量: ${formatBytes(stat.total_bytes)}\n发送: ${formatBytes(stat.bytes_sent)}\n接收: ${formatBytes(stat.bytes_received)}\n会话数: ${stat.session_count}\n位置: ${location.country || '未知'} ${location.city || ''}`);
+            
+            return row;
+        }
+
+        // 加载TOP流量IP
+        function loadTopTalkers() {
+            const tbody = document.getElementById('top-ips-table');
+            
+            fetch('/api/top-talkers?limit=10')
+                .then(response => response.json())
+                .then(data => {
+                    tbody.innerHTML = '';
+                    
+                    if (data && data.length > 0) {
+                        data.forEach((ip, index) => {
+                            const row = document.createElement('tr');
+                            row.className = 'session-row';
+                            const location = ip.location || {};
+                            
+                            // 排名图标
+                            const rankIcon = index < 3 ? 
+                                ['🥇', '🥈', '🥉'][index] : 
+                                `<span class="badge bg-secondary rounded-pill">${index + 1}</span>`;
+                            
+                            row.innerHTML = `
+                                <td>
+                                    <div class="d-flex align-items-center">
+                                        <div class="me-2">${rankIcon}</div>
+                                        <a href="#" class="ip-link fw-bold">${ip.ip}</a>
+                                    </div>
+                                </td>
+                                <td>
+                                    <span class="fw-bold text-primary">${formatBytes(ip.total_bytes)}</span>
+                                </td>
+                                <td>
+                                    <span class="text-muted">${location.country || '未知'}</span>
+                                </td>
+                            `;
+                            
+                            // 添加渐入动画
+                            row.style.opacity = '0';
+                            row.style.transform = 'translateX(20px)';
+                            tbody.appendChild(row);
+                            
+                            setTimeout(() => {
+                                row.style.transition = 'all 0.3s ease';
+                                row.style.opacity = '1';
+                                row.style.transform = 'translateX(0)';
+                            }, index * 100);
+                        });
+                    } else {
+                        tbody.innerHTML = `
+                            <tr>
+                                <td colspan="3" class="text-center py-3">
+                                    <i class="fas fa-trophy text-muted fs-3 mb-2"></i>
+                                    <div class="text-muted">暂无TOP数据</div>
+                                </td>
+                            </tr>
+                        `;
+                    }
+                })
+                .catch(error => {
+                    console.error('加载TOP流量IP失败:', error);
+                    tbody.innerHTML = `
+                        <tr>
+                            <td colspan="3" class="text-center py-3 text-danger">
+                                <i class="fas fa-exclamation-triangle mb-2"></i>
+                                <div>加载失败</div>
+                            </td>
+                        </tr>
+                    `;
+                });
+        }
+
+        // 加载流量历史
+        function loadTrafficHistory() {
+            fetch('/api/traffic-history')
+                .then(response => response.json())
+                .then(data => {
+                    const liveData = data.live_data || [];
+                    const historicalData = data.historical_data || [];
+                    
+                    // 合并数据
+                    const allData = [...historicalData, ...liveData];
+                    
+                    if (allData.length > 0) {
+                        const labels = allData.map(item => formatTime(item.timestamp));
+                        const bytesData = allData.map(item => item.bytes || 0);
+                        const packetsData = allData.map(item => item.packets || 0);
+                        
+                        trafficChart.data.labels = labels;
+                        trafficChart.data.datasets[0].data = bytesData;
+                        trafficChart.data.datasets[1].data = packetsData;
+                        trafficChart.update();
+                    }
+                })
+                .catch(error => console.error('加载流量历史失败:', error));
+        }
+
+        // 加载地理位置地图数据
+        function loadGeoMapData() {
+            fetch('/api/geo-map')
+                .then(response => response.json())
+                .then(data => {
+                    // 清除现有标记
+                    geoMap.eachLayer(layer => {
+                        if (layer instanceof L.Marker) {
+                            geoMap.removeLayer(layer);
+                        }
+                    });
+                    
+                    if (data && data.length > 0) {
+                        data.forEach(location => {
+                            if (location.latitude && location.longitude) {
+                                const marker = L.marker([location.latitude, location.longitude])
+                                    .addTo(geoMap)
+                                    .bindPopup(`
+                                        <strong>${location.ip}</strong><br>
+                                        ${location.country} - ${location.city}<br>
+                                        流量: ${formatBytes(location.total_bytes)}<br>
+                                        数据包: ${formatNumber(location.total_packets)}
+                                    `);
+                            }
+                        });
+                    }
+                })
+                .catch(error => console.error('加载地理位置数据失败:', error));
+        }
+
+        // 加载事件日志（简化版本）
+        function loadEvents() {
+            fetch('/api/events?limit=20')
+                .then(response => response.json())
+                .then(data => {
+                    const tbody = document.getElementById('events-table');
+                    tbody.innerHTML = '';
+                    
+                    if (data && data.length > 0) {
+                        data.forEach((event, index) => {
+                            const row = document.createElement('tr');
+                            row.className = 'session-row';
+                            
+                            // 简化的严重性指示
+                            const severityIcon = {
+                                'INFO': '🔵',
+                                'WARNING': '🟡', 
+                                'ERROR': '🔴',
+                                'DEBUG': '⚫'
+                            }[event.severity] || 'ℹ️';
+                            
+                            row.innerHTML = `
+                                <td class="py-2">
+                                    <div class="d-flex align-items-start">
+                                        <span class="me-2">${severityIcon}</span>
+                                        <div class="flex-grow-1">
+                                            <div class="fw-bold" style="font-size: 0.85rem;">
+                                                ${event.event_type}
+                                            </div>
+                                            <div class="text-muted" style="font-size: 0.75rem;">
+                                                ${event.description}
+                                            </div>
+                                            <small class="text-muted">
+                                                ${formatTime(event.timestamp)}
+                                            </small>
+                                        </div>
+                                    </div>
+                                </td>
+                            `;
+                            
+                            // 添加淡入动画
+                            row.style.opacity = '0';
+                            row.style.transform = 'translateY(10px)';
+                            tbody.appendChild(row);
+                            
+                            setTimeout(() => {
+                                row.style.transition = 'all 0.3s ease';
+                                row.style.opacity = '1';
+                                row.style.transform = 'translateY(0)';
+                            }, index * 50);
+                        });
+                    } else {
+                        tbody.innerHTML = `
+                            <tr>
+                                <td class="text-center py-3">
+                                    <i class="fas fa-list text-muted mb-1"></i>
+                                    <div class="text-muted" style="font-size: 0.85rem;">暂无事件</div>
+                                </td>
+                            </tr>
+                        `;
+                    }
+                })
+                .catch(error => {
+                    console.error('加载事件日志失败:', error);
+                    const tbody = document.getElementById('events-table');
+                    tbody.innerHTML = `
+                        <tr>
+                            <td class="text-center py-3 text-danger">
+                                <i class="fas fa-exclamation-triangle mb-1"></i>
+                                <div style="font-size: 0.85rem;">加载失败</div>
+                            </td>
+                        </tr>
+                    `;
+                });
+        }
+
+        // 更新实时数据
+        function updateRealTimeData(data) {
+            if (data.summary) {
+                document.getElementById('active-sessions').textContent = data.summary.active_sessions || 0;
+                document.getElementById('total-ips').textContent = data.summary.total_ips || 0;
+                document.getElementById('total-bytes').textContent = formatBytes(data.summary.total_bytes || 0);
+                document.getElementById('total-packets').textContent = formatNumber(data.summary.total_packets || 0);
+            }
+            
+            // 更新图表
+            if (data.timestamp) {
+                const timeLabel = formatTime(data.timestamp);
+                trafficChart.data.labels.push(timeLabel);
+                
+                // 保持最近50个数据点
+                if (trafficChart.data.labels.length > 50) {
+                    trafficChart.data.labels.shift();
+                    trafficChart.data.datasets[0].data.shift();
+                    trafficChart.data.datasets[1].data.shift();
+                }
+                
+                trafficChart.data.datasets[0].data.push(data.summary?.total_bytes || 0);
+                trafficChart.data.datasets[1].data.push(data.summary?.total_packets || 0);
+                trafficChart.update('none');
+            }
+        }
+
+        // 工具函数
+        function formatBytes(bytes) {
+            if (bytes === 0) return '0 B';
+            const k = 1024;
+            const sizes = ['B', 'KB', 'MB', 'GB', 'TB'];
+            const i = Math.floor(Math.log(bytes) / Math.log(k));
+            return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
+        }
+
+        function formatNumber(num) {
+            return num.toLocaleString();
+        }
+
+        function formatDuration(seconds) {
+            if (seconds < 60) return Math.round(seconds) + 's';
+            if (seconds < 3600) return Math.round(seconds / 60) + 'm';
+            return Math.round(seconds / 3600) + 'h';
+        }
+
+        function formatDateTime(timestamp) {
+            const date = new Date(timestamp);
+            return date.toLocaleString('zh-CN');
+        }
+
+        function formatTime(timestamp) {
+            const date = new Date(timestamp);
+            return date.toLocaleTimeString('zh-CN');
+        }
+
+        function getSeverityBadge(severity) {
+            const severityClasses = {
+                'INFO': 'bg-info',
+                'WARNING': 'bg-warning',
+                'ERROR': 'bg-danger',
+                'DEBUG': 'bg-secondary'
+            };
+            
+            const className = severityClasses[severity] || 'bg-secondary';
+            return `<span class="badge ${className}">${severity}</span>`;
+        }
+
+        // 页面特定的加载函数
+        
+        // 初始化全屏地图
+        function initializeGeoMapFull() {
+            // 检查容器是否存在
+            const mapContainer = document.getElementById('geo-map-full');
+            if (!mapContainer) {
+                console.error('地图容器不存在');
+                return;
+            }
+            
+            setTimeout(() => {
+                // 清理可能存在的其他地图实例
+                if (geoMap) {
+                    try {
+                        geoMap.remove();
+                        geoMap = null;
+                    } catch (e) {
+                        console.log('清理geoMap实例:', e);
+                    }
+                }
+                
+                // 创建或更新全屏地图
+                if (!window.geoMapFull) {
+                    try {
+                        window.geoMapFull = L.map('geo-map-full').setView([39.9042, 116.4074], 2);
+                        
+                        L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+                            attribution: '© OpenStreetMap contributors'
+                        }).addTo(window.geoMapFull);
+                    } catch (error) {
+                        console.error('地图初始化失败:', error);
+                        return;
+                    }
+                } else {
+                    window.geoMapFull.invalidateSize();
+                }
+                loadGeoMapDataFull();
+            }, 100);
+        }
+        
+        // 加载全屏地图数据
+        function loadGeoMapDataFull() {
+            fetch('/api/geo-map')
+                .then(response => response.json())
+                .then(data => {
+                    // 清除现有标记
+                    if (window.geoMapFull) {
+                        window.geoMapFull.eachLayer(layer => {
+                            if (layer instanceof L.Marker) {
+                                window.geoMapFull.removeLayer(layer);
+                            }
+                        });
+                        
+                        if (data && data.length > 0) {
+                            data.forEach(location => {
+                                if (location.latitude && location.longitude) {
+                                    const marker = L.marker([location.latitude, location.longitude])
+                                        .addTo(window.geoMapFull)
+                                        .bindPopup(`
+                                            <div style="min-width: 200px;">
+                                                <strong style="font-size: 1.1em;">${location.ip}</strong><br>
+                                                <hr style="margin: 8px 0;">
+                                                📍 ${location.country} - ${location.city}<br>
+                                                📊 流量: ${formatBytes(location.total_bytes)}<br>
+                                                📦 数据包: ${formatNumber(location.total_packets)}<br>
+                                                🔗 会话数: ${location.session_count || 'N/A'}
+                                            </div>
+                                        `);
+                                }
+                            });
+                        }
+                    }
+                })
+                .catch(error => console.error('加载地理位置数据失败:', error));
+        }
+        
+        // 加载完整IP统计页面
+        function loadIPStatsPage() {
+            const tbody = document.getElementById('ip-stats-table-full');
+            const url = `/api/ip-stats?order_by=${ipStatsSortState.orderBy}&order_direction=${ipStatsSortState.orderDirection}`;
+            
+            // 显示加载状态
+            tbody.innerHTML = `
+                <tr>
+                    <td colspan="7" class="text-center py-4">
+                        <div class="loading-spinner me-2"></div>
+                        <span class="text-muted">正在加载IP统计数据...</span>
+                    </td>
+                </tr>
+            `;
+            
+            fetch(url)
+                .then(response => response.json())
+                .then(data => {
+                    tbody.innerHTML = '';
+                    
+                    if (data.ip_stats && data.ip_stats.length > 0) {
+                        data.ip_stats.forEach((stat, index) => {
+                            const row = createIPStatsRowFull(stat);
+                            // 添加淡入动画
+                            row.style.opacity = '0';
+                            row.style.transform = 'translateY(20px)';
+                            tbody.appendChild(row);
+                            
+                            // 延迟动画
+                            setTimeout(() => {
+                                row.style.transition = 'all 0.3s ease';
+                                row.style.opacity = '1';
+                                row.style.transform = 'translateY(0)';
+                            }, index * 50);
+                        });
+                    } else {
+                        tbody.innerHTML = `
+                            <tr>
+                                <td colspan="7" class="text-center py-4">
+                                    <i class="fas fa-chart-bar text-muted fs-2 mb-2"></i>
+                                    <div class="text-muted">暂无IP统计数据</div>
+                                    <small class="text-muted">开始监控后将显示IP流量统计</small>
+                                </td>
+                            </tr>
+                        `;
+                    }
+                })
+                .catch(error => {
+                    console.error('加载IP统计失败:', error);
+                    tbody.innerHTML = `
+                        <tr>
+                            <td colspan="7" class="text-center py-4 text-danger">
+                                <i class="fas fa-exclamation-triangle fs-2 mb-2"></i>
+                                <div>加载失败</div>
+                                <small>请检查网络连接或刷新页面重试</small>
+                            </td>
+                        </tr>
+                    `;
+                });
+        }
+        
+        // 创建完整的IP统计行
+        function createIPStatsRowFull(stat) {
+            const row = document.createElement('tr');
+            row.className = 'session-row';
+            
+            const location = stat.location || {};
+            const countryFlag = location.country_code ? 
+                `<img src="https://flagcdn.com/16x12/${location.country_code.toLowerCase()}.png" class="country-flag" alt="${location.country}">` : '🌍';
+            
+            // 计算流量占比条
+            const maxBytes = Math.max(stat.bytes_sent, stat.bytes_received);
+            const sentPercent = maxBytes > 0 ? (stat.bytes_sent / maxBytes) * 100 : 0;
+            const receivedPercent = maxBytes > 0 ? (stat.bytes_received / maxBytes) * 100 : 0;
+            
+            row.innerHTML = `
+                <td>
+                    <a href="#" class="ip-link fw-bold">${stat.ip}</a>
+                </td>
+                <td>
+                    <div class="d-flex align-items-center">
+                        <div class="progress me-2" style="width: 60px; height: 6px;">
+                            <div class="progress-bar" style="width: ${sentPercent}%"></div>
+                        </div>
+                        <span class="text-danger fw-bold">${formatBytes(stat.bytes_sent)}</span>
+                    </div>
+                </td>
+                <td>
+                    <div class="d-flex align-items-center">
+                        <div class="progress me-2" style="width: 60px; height: 6px;">
+                            <div class="progress-bar bg-success" style="width: ${receivedPercent}%"></div>
+                        </div>
+                        <span class="text-success fw-bold">${formatBytes(stat.bytes_received)}</span>
+                    </div>
+                </td>
+                <td>
+                    <span class="fw-bold text-primary fs-6">${formatBytes(stat.total_bytes)}</span>
+                </td>
+                <td>
+                    <span class="badge bg-info rounded-pill">${stat.session_count}</span>
+                </td>
+                <td>
+                    <div class="d-flex align-items-center">
+                        ${countryFlag}
+                        <div class="ms-2">
+                            <div class="fw-bold">${location.country || '未知'}</div>
+                            <small class="text-muted">${location.city || '未知'}</small>
+                        </div>
+                    </div>
+                </td>
+                <td>
+                    <small class="text-muted">${location.isp || '未知'}</small>
+                </td>
+            `;
+            
+            return row;
+        }
+        
+        // 加载完整事件日志页面
+        function loadEventsPage() {
+            fetch('/api/events')
+                .then(response => response.json())
+                .then(data => {
+                    const tbody = document.getElementById('events-table-full');
+                    tbody.innerHTML = '';
+                    
+                    if (data && data.length > 0) {
+                        data.forEach((event, index) => {
+                            const row = document.createElement('tr');
+                            row.className = 'session-row';
+                            
+                            const severityBadge = getSeverityBadge(event.severity);
+                            
+                            row.innerHTML = `
+                                <td>${formatDateTime(event.timestamp)}</td>
+                                <td>
+                                    <span class="badge bg-secondary">${event.event_type}</span>
+                                </td>
+                                <td>${event.description}</td>
+                                <td>${severityBadge}</td>
+                            `;
+                            
+                            // 添加淡入动画
+                            row.style.opacity = '0';
+                            row.style.transform = 'translateY(10px)';
+                            tbody.appendChild(row);
+                            
+                            setTimeout(() => {
+                                row.style.transition = 'all 0.3s ease';
+                                row.style.opacity = '1';
+                                row.style.transform = 'translateY(0)';
+                            }, index * 30);
+                        });
+                    } else {
+                        tbody.innerHTML = `
+                            <tr>
+                                <td colspan="4" class="text-center py-4">
+                                    <i class="fas fa-list text-muted fs-2 mb-2"></i>
+                                    <div class="text-muted">暂无事件日志</div>
+                                    <small class="text-muted">系统事件将在这里显示</small>
+                                </td>
+                            </tr>
+                        `;
+                    }
+                })
+                .catch(error => {
+                    console.error('加载事件日志失败:', error);
+                    const tbody = document.getElementById('events-table-full');
+                    tbody.innerHTML = `
+                        <tr>
+                            <td colspan="4" class="text-center py-4 text-danger">
+                                <i class="fas fa-exclamation-triangle fs-2 mb-2"></i>
+                                <div>加载失败</div>
+                                <small>请检查网络连接或刷新页面重试</small>
+                            </td>
+                        </tr>
+                    `;
+                });
+        }
+        
+        // 初始化流量分析页面
+        function initializeTrafficAnalysis() {
+            setTimeout(() => {
+                initializeTrafficChartDetailed();
+                initializeProtocolChart();
+                initializeCountryChart();
+            }, 100);
+        }
+        
+        // 初始化详细流量图表
+        function initializeTrafficChartDetailed() {
+            const ctx = document.getElementById('traffic-chart-detailed');
+            if (!ctx) return;
+            
+            if (window.trafficChartDetailed) {
+                window.trafficChartDetailed.destroy();
+            }
+            
+            window.trafficChartDetailed = new Chart(ctx.getContext('2d'), {
+                type: 'line',
+                data: {
+                    labels: [],
+                    datasets: [{
+                        label: '流量 (Bytes)',
+                        data: [],
+                        borderColor: '#667eea',
+                        backgroundColor: 'rgba(102, 126, 234, 0.1)',
+                        fill: true,
+                        tension: 0.4
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    scales: {
+                        y: {
+                            beginAtZero: true,
+                            ticks: {
+                                callback: function(value) {
+                                    return formatBytes(value);
+                                }
+                            }
+                        }
+                    }
+                }
+            });
+            
+            loadTrafficHistory();
+        }
+        
+        // 初始化协议分布图表
+        function initializeProtocolChart() {
+            // 协议分布饼图实现
+            const ctx = document.getElementById('protocol-chart');
+            if (!ctx) return;
+            
+            if (window.protocolChart) {
+                window.protocolChart.destroy();
+            }
+            
+            window.protocolChart = new Chart(ctx.getContext('2d'), {
+                type: 'doughnut',
+                data: {
+                    labels: ['TCP', 'UDP', 'ICMP', 'Other'],
+                    datasets: [{
+                        data: [65, 25, 8, 2],
+                        backgroundColor: [
+                            '#667eea',
+                            '#764ba2', 
+                            '#f093fb',
+                            '#f5f7fa'
+                        ]
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false
+                }
+            });
+        }
+        
+        // 初始化国家分布图表
+        function initializeCountryChart() {
+            // 国家分布柱状图实现
+            const ctx = document.getElementById('country-chart');
+            if (!ctx) return;
+            
+            if (window.countryChart) {
+                window.countryChart.destroy();
+            }
+            
+            window.countryChart = new Chart(ctx.getContext('2d'), {
+                type: 'bar',
+                data: {
+                    labels: ['中国', '美国', '香港', '澳大利亚', '台湾'],
+                    datasets: [{
+                        label: '流量分布',
+                        data: [45, 25, 15, 10, 5],
+                        backgroundColor: [
+                            '#667eea',
+                            '#764ba2',
+                            '#f093fb',
+                            '#f5f7fa',
+                            '#c3cfe2'
+                        ]
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    scales: {
+                        y: {
+                            beginAtZero: true
+                        }
+                    }
+                }
+            });
+        }
+        
+        // 更新导航统计数字
+        function updateNavigationStats() {
+            // 更新会话数量
+            const sessionsCount = document.getElementById('nav-sessions-count');
+            const ipsCount = document.getElementById('nav-ips-count');
+            
+            if (sessionsCount) {
+                const currentSessionsCount = document.getElementById('active-sessions');
+                if (currentSessionsCount) {
+                    sessionsCount.textContent = currentSessionsCount.textContent;
+                }
+            }
+            
+            if (ipsCount) {
+                const currentIpsCount = document.getElementById('total-ips');
+                if (currentIpsCount) {
+                    ipsCount.textContent = currentIpsCount.textContent;
+                }
+            }
+        }
+        
+        // 定期刷新数据
+        setInterval(function() {
+            if (isMonitoring) {
+                loadStatus();
+                updateNavigationStats();
+                socket.emit('request_update');
+            }
+        }, 5000);
+
+        // 定期刷新列表数据
+        setInterval(function() {
+            if (isMonitoring) {
+                // 根据当前页面刷新对应数据
+                const activePage = document.querySelector('.page-content.active');
+                if (activePage) {
+                    const pageId = activePage.id.replace('page-', '');
+                    switch(pageId) {
+                        case 'dashboard':
+                            loadSessions();
+                            loadIPStats();
+                            loadTopTalkers();
+                            break;
+                        case 'sessions':
+                            loadSessions();
+                            break;
+                        case 'ip-stats':
+                            loadIPStatsPage();
+                            break;
+                        case 'geo-map':
+                            loadGeoMapDataFull();
+                            break;
+                        case 'events':
+                            loadEventsPage();
+                            break;
+                    }
+                }
+            }
+        }, 10000);
+    </script>
+</body>
+</html>

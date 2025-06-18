@@ -1,0 +1,35 @@
+# NetFlow监控工具配置文件
+
+# 网络接口配置
+network:
+  interface: "ens33"  # 监控的网络接口，auto表示自动选择
+  promiscuous_mode: true  # 是否开启混杂模式
+  
+# 数据库配置
+database:
+  path: "data/netflow.db"
+  
+# Web服务配置
+web:
+  host: "0.0.0.0"
+  port: 8080
+  debug: false
+  
+# 监控配置
+monitor:
+  capture_timeout: 60  # 数据包捕获超时时间（秒）
+  session_timeout: 300  # 会话超时时间（秒）
+  max_sessions: 10000  # 最大会话数
+  
+# IP归属地配置
+geolocation:
+  enabled: true
+  database_path: "data/GeoLite2-City.mmdb"
+  update_interval: 86400  # 更新间隔（秒）
+  
+# 日志配置
+logging:
+  level: "INFO"
+  file: "logs/netflow.log"
+  max_size: 10485760  # 10MB
+  backup_count: 5
